@@ -1,0 +1,379 @@
+#!/usr/bin/env python3
+import time
+import re
+from typing import Tuple, Dict
+
+import argh # type: ignore
+import psutil # type: ignore
+import blessed # type: ignore
+
+term = blessed.Terminal()
+
+def rm_color(x):
+    return re.sub(r'\x1b[^m]*m', '', x)
+
+def ljust(val, n):
+    if isinstance(val, (int, float)):
+        val = '{:,}'.format(val)
+    else:
+        val = str(val)
+    size = n - len(rm_color(val))
+    return val.ljust(len(val) + size)
+
+def rjust(val, n):
+    if isinstance(val, (int, float)):
+        val = '{:,}'.format(val)
+    else:
+        val = str(val)
+    size = n - len(rm_color(val))
+    return val.rjust(len(val) + size)
+
+attrs = [
+    'cmdline',
+    'memory_percent',
+    'cpu_percent',
+    'name',
+]
+
+headers = {
+    'cpu_percent':    'cpu',
+    'memory_percent': 'ram',
+    'name':           'name',
+    'num_threads':    'threads',
+    'num_fds':        'fds',
+    'open_files':     'files',
+    'reads':          'reads/s',
+    'writes':         'writes/s',
+    'rchars':         'rbytes/s',
+    'wchars':         'wbytes/s',
+    'switches':       'switches',
+    'connections':    'conns',
+    'user':           'user',
+    'pid':            'pid',
+}
+
+def bar(percent, color):
+    width = term.width - 1
+    screen = int((max(percent, 1) / 100) * width)
+    screen *= '|'
+    screen += ' ' * (width - len(screen))
+    return color(screen)
+
+class state:
+    all = False
+    connections = False
+    exclude = ''
+    fds = False
+    files = False
+    include = ''
+    io = False
+    io_last: Dict[Tuple[int, str], int] = {}
+    io_sort_key = ['reads', 'writes', 'rchars', 'wchars']
+    key = lambda x: x.get('cpu_percent', 0)
+    pid = False
+    sleep = 0.5
+    switches = False
+    switches_last: Dict[int, int] = {}
+    threads = False
+    top = False
+    top_procs: Dict[int, dict] = {}
+    user = False
+
+def update():
+    screen = ''
+    while True:
+        time.sleep(state.sleep)
+
+        # hotkeys
+        while True:
+            with term.raw():
+                char = term.inkey(0)
+            if not char:
+                break
+            if char == 'm': # sort by memory
+                state.key = lambda x: x.get('memory_percent', 0)
+            elif char == 'D': # sort by fds
+                if 'num_fds' in attrs:
+                    state.key = lambda x: x.get('num_fds') or 0
+            elif char == 'd': # fds
+                state.fds = not state.fds
+                if state.fds:
+                    attrs.append('num_fds')
+                else:
+                    attrs.remove('num_fds')
+                    state.key = lambda x: x.get('cpu_percent', 0)
+            elif char == 'N': # sort by connections
+                if 'connections' in attrs:
+                    state.key = lambda x: x.get('connections', 0)
+            elif char == 'n': # connections
+                state.connections = not state.connections
+                if state.connections:
+                    attrs.append('connections')
+                else:
+                    attrs.remove('connections')
+                    state.key = lambda x: x.get('cpu_percent', 0)
+            elif char == 'F': # sort by open files
+                if 'open_files' in attrs:
+                    state.key = lambda x: x.get('open_files', 0)
+            elif char == 'f': # open files
+                state.files = not state.files
+                if state.files:
+                    attrs.append('open_files')
+                else:
+                    attrs.remove('open_files')
+                    state.key = lambda x: x.get('cpu_percent', 0)
+            elif char == 'R': # sort by threads
+                if 'num_threads' in attrs:
+                    state.key = lambda x: x.get('num_threads') or 0
+            elif char == 'r': # threads
+                state.threads = not state.threads
+                if state.threads:
+                    attrs.append('num_threads')
+                else:
+                    attrs.remove('num_threads')
+                    state.key = lambda x: x.get('cpu_percent', 0)
+            elif char == 'O': # sort by io
+                if 'io_counters' in attrs:
+                    key = state.io_sort_key[0]
+                    state.io_sort_key.append(state.io_sort_key.pop(0))
+                    state.key = lambda x: x.get(key, 0)
+            elif char == 'W': # sort by context switches
+                if 'num_ctx_switches' in attrs:
+                    state.key = lambda x: x.get('switches', 0)
+            elif char == 'w': # context switches
+                state.switches = not state.switches
+                if state.switches:
+                    attrs.append('num_ctx_switches')
+                else:
+                    attrs.remove('num_ctx_switches')
+                    state.key = lambda x: x.get('cpu_percent', 0)
+            elif char == 'c': # sort by cpu
+                state.key = lambda x: x.get('cpu_percent', 0)
+            elif char == 'a': # all
+                state.all = not state.all
+            elif char == 't': # top
+                state.top = not state.top
+                state.top_procs: Dict[int, dict] = {}
+            elif char == 's': # sleep
+                try:
+                    print(term.clear + term.bright_blue)
+                    print('current sleep seconds:', state.sleep)
+                    print('sleep seconds: ', end='')
+                    state.sleep = float(input())
+                except:
+                    pass
+            elif char == 'o': # io
+                state.io = not state.io
+                if state.io:
+                    attrs.append('io_counters')
+                else:
+                    attrs.remove('io_counters')
+                    state.key = lambda x: x.get('cpu_percent', 0)
+            elif char == 'i': # include
+                print(term.clear + term.bright_blue)
+                print('current include:', state.include)
+                print('include: ', end='')
+                val = input()
+                if val.startswith('+'):
+                    state.include += ' ' + val[1:].strip()
+                else:
+                    state.include = val
+            elif char == 'e': # exclude
+                print(term.clear + term.bright_blue)
+                print('current exclude:', state.exclude)
+                print('exclude: ', end='')
+                val = input()
+                if val.startswith('+'):
+                    state.exclude += ' ' + val[1:].strip()
+                else:
+                    state.exclude = val
+            elif char == 'p': # pid
+                state.pid = not state.pid
+            elif char == 'u': # user
+                state.user = not state.user
+            elif char == 'l': # log current screen
+                with open('/tmp/ptop.log', 'a') as f:
+                    f.write(rm_color(screen))
+            elif char.name == 'KEY_ENTER': # pause
+                with term.raw():
+                    term.inkey()
+            elif char == 'q': # quite
+                return
+
+            # settings
+            elif char == 'S':
+                print(term.clear + term.bright_blue)
+                print(term.green(' sleep:       '), state.sleep)
+                print(term.green(' include:     '), state.include.split())
+                print(term.green(' exclude:     '), state.exclude.split())
+                print(term.green(' all:         '), state.all)
+                print(term.green(' connections: '), state.connections)
+                print(term.green(' fds:         '), state.fds)
+                print(term.green(' files:       '), state.files)
+                print(term.green(' io:          '), state.io)
+                print(term.green(' pid:         '), state.pid)
+                print(term.green(' switches:    '), state.switches)
+                print(term.green(' threads:     '), state.threads)
+                print(term.green(' top:         '), state.top)
+                print(term.green(' user:        '), state.user)
+                with term.raw():
+                    term.inkey()
+
+            # help
+            elif char in {'?', 'h'}:
+                print(term.clear + term.bright_blue)
+                print(term.green(' ENTER:'), 'pause')
+                print()
+                print(term.green(' e:'), 'edit exclude filter: space seperated substrings, use first char "+" to append')
+                print(term.green(' i:'), 'edit include filter: space seperated substrings, use first char "+" to append')
+                print()
+                print(term.green(' d:'), 'show fds')
+                print(term.green(' f:'), 'show files')
+                print(term.green(' n:'), 'show connections')
+                print(term.green(' o:'), 'show io: reads/s, writes/s, read_bytes/s, write_bytes/s')
+                print(term.green(' p:'), 'show pid')
+                print(term.green(' r:'), 'show threads')
+                print(term.green(' u:'), 'show username')
+                print(term.green(' w:'), 'show ctx switches')
+                print()
+                print(term.green(' c:'), 'sort by cpu')
+                print(term.green(' m:'), 'sort by memory')
+                print(term.green(' D:'), 'sort by fds')
+                print(term.green(' F:'), 'sort by files')
+                print(term.green(' N:'), 'sort by connections')
+                print(term.green(' O:'), 'sort by io, cycles through columns')
+                print(term.green(' R:'), 'sort by threads')
+                print(term.green(' W:'), 'sort by ctx switches')
+                print()
+                print(term.green(' a:'), 'all processes')
+                print(term.green(' h:'), 'help')
+                print(term.green(' l:'), 'log current screen to /tmp/ptop.log')
+                print(term.green(' q:'), 'quit')
+                print(term.green(' s:'), 'sleep seconds')
+                print(term.green(' t:'), 'accumulate top processes by keeping the max result for each pid')
+                print(term.green(' S:'), 'show settings')
+                with term.raw():
+                    term.inkey()
+
+        # build the new screen
+        screen = '\n'
+
+        # add cpu and ram bars
+        voffset = 5
+        for cpu_num, percent in enumerate(psutil.cpu_percent(interval=0, percpu=True)):
+            screen += ' ' + bar(percent, term.green) + '\n'
+            voffset += 1
+        screen += ' ' + bar(psutil.virtual_memory().percent, term.blue) + '\n'
+        screen += '\n'
+
+        # collect all procs
+        procs = []
+        for p in psutil.process_iter(attrs):
+            p.info['pid'] = p.pid
+            if state.user:
+                p.info['user'] = p.username()
+            p = p.info
+            p['name'] = ' '.join(p['cmdline']) or p['name']
+            procs.append(p)
+
+        # preprocess data
+        for p in procs:
+            p['pid'] = str(p['pid'])
+            p['cpu_percent'] = round(p['cpu_percent'], 1)
+            p['memory_percent'] = round(p['memory_percent'], 1)
+            if state.fds:
+                p['num_fds'] = p.get('num_fds') or 0
+            if state.connections:
+                p['connections'] = len(p['connections'] or [])
+            if state.files:
+                p['open_files'] = len(p['open_files'] or [])
+            if state.switches:
+                switches = p['num_ctx_switches'].voluntary + p['num_ctx_switches'].involuntary
+                p['switches'] = int((switches - state.switches_last.get(p['pid'], 0)) / state.sleep)
+                state.switches_last[p['pid']] = switches
+            if state.io:
+                io = p['io_counters']
+                if not io:
+                    p.update({'reads': 0, 'writes': 0, 'rchars': 0, 'wchars': 0})
+                else:
+                    read_count = io.read_count
+                    p['reads'] = int((read_count - state.io_last.get((p['pid'], 'r'), 0)) // state.sleep)
+                    state.io_last[(p['pid'], 'r')] = read_count
+                    write_count = io.write_count
+                    p['writes'] = int((write_count - state.io_last.get((p['pid'], 'w'), 0)) // state.sleep)
+                    state.io_last[(p['pid'], 'w')] = write_count
+                    read_chars = io.read_chars
+                    p['rchars'] = int((read_chars - state.io_last.get((p['pid'], 'rc'), 0)) // state.sleep)
+                    state.io_last[(p['pid'], 'rc')] = read_chars
+                    write_chars = io.write_chars
+                    p['wchars'] = int((write_chars - state.io_last.get((p['pid'], 'wc'), 0)) // state.sleep)
+                    state.io_last[(p['pid'], 'wc')] = write_chars
+
+        # filter procs
+        procs = [p for p in procs
+                 if state.key(p) > 0.5
+                 # if any(v for v in p.values() if isinstance(v, (int, float)) and v > 0.5)
+                 or state.all]
+        if state.top:
+            for new in procs:
+                old = state.top_procs.get(new['pid'], new)
+                state.top_procs[new['pid']] = new if state.key(new) > state.key(old) else old
+            procs = state.top_procs.values()
+        if state.include:
+            procs = [p for p in procs if any(f in p['name'] for f in state.include.split())]
+        if state.exclude:
+            procs = [p for p in procs if not any(f in p['name'] for f in state.exclude.split())]
+
+        # sort and add procs
+        header = {k: (term.yellow(v) # sorted column has yellow header
+                      if state.key({k: 'token'}) == 'token' else
+                      term.bright_blue(v)) # otherwise normal header
+                  for k, v in headers.items()}
+        procs = [header] + sorted(procs, key=state.key, reverse=True)[:term.height - voffset]
+        for i, p in enumerate(procs):
+            line = [term.green(ljust(p['cpu_percent'], 5))]
+            line += [term.blue(ljust(p['memory_percent'], 4))]
+            if state.pid:
+                line += [ljust(p['pid'], 7)]
+            if state.user:
+                line += [ljust(p['user'], 10)]
+            if state.threads:
+                line += [rjust(p['num_threads'], 8)]
+            if state.switches:
+                line += [rjust(p['switches'], 8)]
+            if state.connections:
+                line += [rjust(p['connections'], 8)]
+            if state.files:
+                line += [rjust(p['open_files'], 8)]
+            if state.fds:
+                line += [rjust(p['num_fds'], 8)]
+            if state.io:
+                line += [
+                    ''
+                    + rjust(p["reads"],  15)
+                    + rjust(p["writes"], 15)
+                    + rjust(p["rchars"], 15)
+                    + rjust(p["wchars"], 15)
+                ]
+            line = ' ' + ' '.join(line)
+            name_max_len = term.width - len(rm_color(line)) - 2
+            line += ' ' + term.bright_blue(p['name'][:name_max_len])
+            screen += line + '\n'
+
+        # redraw the screen
+        print(term.clear + term.white + screen.rstrip() + term.bright_black)
+
+def main():
+    """
+    a minimal htop alternative, hit "h" for help.
+    """
+    with term.fullscreen():
+        print(term.clear)
+        try:
+            with term.hidden_cursor():
+                update()
+        except KeyboardInterrupt:
+            print(term.clear)
+
+if __name__ == '__main__':
+    argh.dispatch_command(main)

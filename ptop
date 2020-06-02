@@ -312,7 +312,6 @@ def update():
         # filter procs
         procs = [p for p in procs
                  if state.key(p) > 0.5
-                 # if any(v for v in p.values() if isinstance(v, (int, float)) and v > 0.5)
                  or state.all]
         if state.top:
             for new in procs:

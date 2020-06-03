@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import platform
 import time
 import re
 from typing import Tuple, Dict
@@ -132,7 +133,7 @@ def update():
                 else:
                     attrs.remove('num_threads')
                     state.key = lambda x: x.get('cpu_percent', 0)
-            elif char == 'O': # sort by io
+            elif char == 'O' and platform.system() == 'Linux': # sort by io
                 if 'io_counters' in attrs:
                     key = state.io_sort_key[0]
                     state.io_sort_key.append(state.io_sort_key.pop(0))
@@ -162,7 +163,7 @@ def update():
                     state.sleep = float(input())
                 except:
                     pass
-            elif char == 'o': # io
+            elif char == 'o' and platform.system() == 'Linux': # io
                 state.io = not state.io
                 if state.io:
                     attrs.append('io_counters')
@@ -197,7 +198,7 @@ def update():
             elif char.name == 'KEY_ENTER': # pause
                 with term.raw():
                     term.inkey()
-            elif char == 'q': # quite
+            elif char == 'q': # quit
                 return
 
             # settings
@@ -210,7 +211,8 @@ def update():
                 print(term.green(' connections: '), state.connections)
                 print(term.green(' fds:         '), state.fds)
                 print(term.green(' files:       '), state.files)
-                print(term.green(' io:          '), state.io)
+                if platform.system() == 'Linux':
+                    print(term.green(' io:          '), state.io)
                 print(term.green(' pid:         '), state.pid)
                 print(term.green(' switches:    '), state.switches)
                 print(term.green(' threads:     '), state.threads)
@@ -230,7 +232,8 @@ def update():
                 print(term.green(' d:'), 'show fds')
                 print(term.green(' f:'), 'show files')
                 print(term.green(' n:'), 'show connections')
-                print(term.green(' o:'), 'show io: reads/s, writes/s, read_bytes/s, write_bytes/s')
+                if platform.system() == 'Linux':
+                    print(term.green(' o:'), 'show io: reads/s, writes/s, read_bytes/s, write_bytes/s')
                 print(term.green(' p:'), 'show pid')
                 print(term.green(' r:'), 'show threads')
                 print(term.green(' u:'), 'show username')
@@ -241,7 +244,8 @@ def update():
                 print(term.green(' D:'), 'sort by fds')
                 print(term.green(' F:'), 'sort by files')
                 print(term.green(' N:'), 'sort by connections')
-                print(term.green(' O:'), 'sort by io, cycles through columns')
+                if platform.system() == 'Linux':
+                    print(term.green(' O:'), 'sort by io, cycles through columns')
                 print(term.green(' R:'), 'sort by threads')
                 print(term.green(' W:'), 'sort by ctx switches')
                 print()
@@ -273,14 +277,17 @@ def update():
             if state.user:
                 p.info['user'] = p.username()
             p = p.info
-            p['name'] = ' '.join(p['cmdline']) or p['name']
+            try:
+                p['name'] = ' '.join(p['cmdline']) or p['name']
+            except TypeError:
+                p['name'] = p['cmdline'] or p['name']
             procs.append(p)
 
         # preprocess data
         for p in procs:
             p['pid'] = str(p['pid'])
-            p['cpu_percent'] = round(p['cpu_percent'], 1)
-            p['memory_percent'] = round(p['memory_percent'], 1)
+            p['cpu_percent'] = round(p['cpu_percent'] or 0, 1)
+            p['memory_percent'] = round(p['memory_percent'] or 0, 1)
             if state.fds:
                 p['num_fds'] = p.get('num_fds') or 0
             if state.connections:
@@ -288,7 +295,10 @@ def update():
             if state.files:
                 p['open_files'] = len(p['open_files'] or [])
             if state.switches:
-                switches = p['num_ctx_switches'].voluntary + p['num_ctx_switches'].involuntary
+                try:
+                    switches = p['num_ctx_switches'].voluntary + p['num_ctx_switches'].involuntary
+                except AttributeError:
+                    switches = 0
                 p['switches'] = int((switches - state.switches_last.get(p['pid'], 0)) / state.sleep)
                 state.switches_last[p['pid']] = switches
             if state.io:

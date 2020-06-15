@@ -4,11 +4,11 @@
 ![demo](demo.gif)
 
 ##### installation:
-- `python3 -m pip install git+https://github.com/nathants/ptop`
+`python3 -m pip install git+https://github.com/nathants/ptop`
 
 #### usage:
-- `ptop`
+`ptop`
 
 #### help:
-- hit `h` for help
+hit `h` for help
 ![help](help.png)

@@ -45,8 +45,8 @@ headers = {
     'open_files':     'files',
     'reads':          'reads/s',
     'writes':         'writes/s',
-    'rchars':         'rbytes/s',
-    'wchars':         'wbytes/s',
+    'rchars':         'read_mb/s',
+    'wchars':         'write_mb/s',
     'switches':       'switches',
     'connections':    'conns',
     'user':           'user',
@@ -313,10 +313,10 @@ def update():
                     p['writes'] = int((write_count - state.io_last.get((p['pid'], 'w'), 0)) // state.sleep)
                     state.io_last[(p['pid'], 'w')] = write_count
                     read_chars = io.read_chars
-                    p['rchars'] = int((read_chars - state.io_last.get((p['pid'], 'rc'), 0)) // state.sleep)
+                    p['rchars'] = int((read_chars - state.io_last.get((p['pid'], 'rc'), 0)) // state.sleep) // 1024 // 1024
                     state.io_last[(p['pid'], 'rc')] = read_chars
                     write_chars = io.write_chars
-                    p['wchars'] = int((write_chars - state.io_last.get((p['pid'], 'wc'), 0)) // state.sleep)
+                    p['wchars'] = int((write_chars - state.io_last.get((p['pid'], 'wc'), 0)) // state.sleep) // 1024 // 1024
                     state.io_last[(p['pid'], 'wc')] = write_chars
 
         # filter procs

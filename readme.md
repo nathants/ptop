@@ -1,22 +1,24 @@
-### a minimal htop alternative
+## what
 
-#### demo
+a minimal htop alternative
+
+## demo
 
 ![demo](https://github.com/nathants/ptop/raw/master/demo.gif)
 
-#### installation:
+## install
 
 ```bash
 python3 -m pip install git+https://github.com/nathants/ptop
 ```
 
-#### usage:
+## usage
 
 ```bash
 ptop
 ```
 
-#### help:
+## help
 
 hit `h` for help
 

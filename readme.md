@@ -1,10 +1,10 @@
 ### a minimal htop alternative
 
-##### demo
+#### demo
 
 ![demo](https://github.com/nathants/ptop/raw/master/demo.gif)
 
-##### installation:
+#### installation:
 
 ```bash
 python3 -m pip install git+https://github.com/nathants/ptop

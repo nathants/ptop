@@ -366,7 +366,8 @@ def update():
                 ]
             line = ' ' + ' '.join(line)
             name_max_len = term.width - len(rm_color(line)) - 2
-            line += ' ' + term.bright_blue(p['name'][:name_max_len])
+            name = ' '.join(p['name'][:name_max_len].replace('\n', ' ').split())
+            line += ' ' + term.bright_blue(name)
             screen += line + '\n'
 
         # redraw the screen

@@ -359,10 +359,10 @@ def update():
             if state.io:
                 line += [
                     ''
-                    + rjust(p["reads"],  15)
-                    + rjust(p["writes"], 15)
-                    + rjust(p["rchars"], 15)
-                    + rjust(p["wchars"], 15)
+                    + rjust(p["reads"],  13)
+                    + rjust(p["writes"], 13)
+                    + rjust(p["rchars"], 11)
+                    + rjust(p["wchars"], 11)
                 ]
             line = ' ' + ' '.join(line)
             name_max_len = term.width - len(rm_color(line)) - 2

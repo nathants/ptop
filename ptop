@@ -267,7 +267,8 @@ def update():
         for cpu_num, percent in enumerate(psutil.cpu_percent(interval=0, percpu=True)):
             screen += ' ' + bar(percent, term.green) + '\n'
             voffset += 1
-        screen += ' ' + bar(psutil.virtual_memory().percent, term.blue) + '\n'
+        vm = psutil.virtual_memory()
+        screen += ' ' + bar(100 * (vm.active / vm.total), term.blue) + '\n'
         screen += '\n'
 
         # collect all procs

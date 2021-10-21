@@ -79,6 +79,11 @@ class state:
     top = False
     top_procs: Dict[int, dict] = {}
     user = False
+    disk_bytes_read_last = 0
+    disk_bytes_write_last = 0
+    net_bytes_read_last = 0
+    net_bytes_write_last = 0
+    iowait_last = 0
 
 def update():
     screen = ''
@@ -263,13 +268,44 @@ def update():
         screen = '\n'
 
         # add cpu and ram bars
-        voffset = 5
+        voffset = 7
         for cpu_num, percent in enumerate(psutil.cpu_percent(interval=0, percpu=True)):
             screen += ' ' + bar(percent, term.green) + '\n'
             voffset += 1
         vm = psutil.virtual_memory()
-        screen += ' ' + bar(100 * (vm.active / vm.total), term.blue) + '\n'
+        # screen += ' ' + bar(100 * (vm.active / vm.total), term.blue) + '\n'
+        screen += ' ' + bar(vm.percent, term.blue) + '\n'
+
+        # disk usage
+        disks = [d.mountpoint for d in psutil.disk_partitions()]
+        disks_usage = [psutil.disk_usage(d) for d in disks]
+        disks_used = sum(d.used for d in disks_usage)
+        disks_total = sum(d.total for d in disks_usage)
+        screen += ' ' + bar((disks_used / disks_total * 100), term.magenta) + '\n'
+
+        # net io
+        net = psutil.net_io_counters()
+        net_bytes_read, net_bytes_write = net.bytes_recv, net.bytes_sent
+        net_read_mb_s = int((net_bytes_read - state.net_bytes_read_last) / 1024 / 1024)
+        net_write_mb_s = int((net_bytes_write - state.net_bytes_write_last) / 1024 / 1024)
+        state.net_bytes_read_last, state.net_bytes_write_last = net_bytes_read, net_bytes_write
+        net_max_mb_s = 70
+        screen += ' ' + bar((net_read_mb_s + net_write_mb_s) / net_max_mb_s * 100, term.yellow) + '\n'
         screen += '\n'
+
+        # iowait
+        # iowait = psutil.cpu_times().iowait
+        # screen += ' ' + bar((iowait - state.iowait_last) / psutil.cpu_count() * 100, term.cyan) + '\n'
+        # state.iowait_last = iowait
+
+        # disk io
+        # disk = psutil.disk_io_counters()
+        # disk_bytes_read, disk_bytes_write = disk.read_bytes, disk.write_bytes
+        # disk_read_mb_s = int((disk_bytes_read - state.disk_bytes_read_last) / 1024 / 1024)
+        # disk_write_mb_s = int((disk_bytes_write - state.disk_bytes_write_last) / 1024 / 1024)
+        # state.disk_bytes_read_last, state.disk_bytes_write_last = disk_bytes_read, disk_bytes_write
+        # disk_max_mb_s = 1000
+        # screen += ' ' + bar((disk_read_mb_s + disk_write_mb_s) / disk_max_mb_s * 100, term.cyan) + '\n'
 
         # collect all procs
         procs = []

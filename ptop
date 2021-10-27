@@ -273,7 +273,7 @@ def update():
             screen += ' ' + bar(percent, term.green) + '\n'
             voffset += 1
         vm = psutil.virtual_memory()
-        screen += ' ' + bar(vm.percent, term.blue) + '\n'
+        screen += ' ' + bar(100 * (vm.active / vm.total), term.blue) + '\n'
 
         # disk usage
         disks = [d.mountpoint for d in psutil.disk_partitions()]

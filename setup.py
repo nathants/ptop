@@ -9,8 +9,8 @@ setuptools.setup(
     url='http://github.com/nathants/ptop',
     scripts=['ptop'],
     python_requires='>=3.7',
-    install_requires=['psutil >5, <6',
-                      'argh >0.26, <0.27',
-                      'blessed >1, <2'],
+    install_requires=['psutil',
+                      'argh',
+                      'blessed'],
     description='a minimal htop alternative',
 )
